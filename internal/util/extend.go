@@ -29,9 +29,9 @@ func GetEntity(ctx tg.Context) (entity string) {
 		entity = replied.Sender.FirstName
 	}
 
-	re := regexp.MustCompile(`(/?[\w\d@]*\s+?)(.+)`)
-	if groups := re.FindStringSubmatch(ctx.Text()); len(groups) >= 3 {
-		entity = groups[2]
+	re := regexp.MustCompile(`\S+\s+(.*\S)`)
+	if groups := re.FindStringSubmatch(ctx.Text()); len(groups) >= 2 {
+		entity = groups[1]
 	}
 
 	return
