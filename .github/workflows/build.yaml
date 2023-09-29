@@ -1,0 +1,21 @@
+name: Build Go artifacts
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v4
+      - name: Install dependencies
+        run: go get .
+      - name: Build with go
+        run: make build_x64
+      - name: Upload Go artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          path: ./target/umed_linux_amd64
