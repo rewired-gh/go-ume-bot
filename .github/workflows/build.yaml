@@ -13,8 +13,6 @@ jobs:
         with:
           go-version: '1.21.1'
         uses: actions/setup-go@v4
-      - name: Install dependencies
-        run: go get .
       - name: Build with go
         run: make build_x64
       - name: Upload Go artifacts
