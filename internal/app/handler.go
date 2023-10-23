@@ -1,14 +1,17 @@
 package app
 
 import (
+	"bytes"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/rewired-gh/go-ume-bot/internal/util"
+	"github.com/rewired-gh/water-burner/pkg/burner"
 	tg "gopkg.in/telebot.v3"
 )
 
-func HandleCommands(bot *tg.Bot) {
+func HandleCommands(bot *tg.Bot, config util.Config) {
 	bot.Handle("/start", func(ctx tg.Context) error {
 		ctx.Reply("Hi~")
 		return nil
@@ -62,7 +65,7 @@ func HandleCommands(bot *tg.Bot) {
 		}
 		msg, err := bot.Reply(ctx.Message(), init)
 		if err != nil {
-			return nil
+			return err
 		}
 		for i := int64(0); i < num; i++ {
 			time.Sleep(2 * time.Second)
@@ -80,9 +83,40 @@ func HandleCommands(bot *tg.Bot) {
 		num, err := util.GetBoundNum(util.GetEntity(ctx))
 		if err != nil {
 			ctx.Reply(util.StickerFromID("CAACAgQAAxkBAAEg1LRkWe1Tk6Vc_mCZ8jqeKN5begPGKgACqwwAAu5XIVKAayOOt2MuRS8E"))
-			return nil
+			return err
 		}
 		ctx.Reply(util.GetNaturalSet(num))
+		return nil
+	})
+
+	bot.Handle(tg.OnPhoto, func(ctx tg.Context) error {
+		msg := ctx.Message()
+		caption := msg.Caption
+		if caption != "/burn" {
+			return nil
+		}
+		fileID := msg.Photo.FileID
+		filePath, err := util.DownloadFile(config.TmpPath, fileID, bot)
+		if err != nil {
+			return err
+		}
+		img, err := util.LoadImage(filePath)
+		if err != nil {
+			fmt.Println("3")
+			return err
+		}
+		if err = os.Remove(filePath); err != nil {
+			fmt.Println("4")
+			return err
+		}
+		burnedImage := burner.BurnImage(img)
+		imgBytes, err := util.ImageToPNGBytes(burnedImage)
+		if err != nil {
+			fmt.Println("5")
+			return err
+		}
+		photo := &tg.Photo{File: tg.FromReader(bytes.NewReader(imgBytes))}
+		ctx.Reply(photo)
 		return nil
 	})
 

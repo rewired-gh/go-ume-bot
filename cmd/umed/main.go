@@ -2,16 +2,22 @@ package main
 
 import (
 	"log"
-	"os"
 	"time"
 
 	"github.com/rewired-gh/go-ume-bot/internal/app"
+	"github.com/rewired-gh/go-ume-bot/internal/util"
 	tg "gopkg.in/telebot.v3"
 )
 
 func main() {
+	config, err := util.LoadConfig("./")
+
+	if err != nil {
+		panic(err)
+	}
+
 	pref := tg.Settings{
-		Token:  os.Getenv("TOKEN"),
+		Token:  config.Token,
 		Poller: &tg.LongPoller{Timeout: 15 * time.Second},
 	}
 
@@ -21,6 +27,6 @@ func main() {
 		return
 	}
 
-	app.HandleCommands(b)
+	app.HandleCommands(b, config)
 	b.Start()
 }
