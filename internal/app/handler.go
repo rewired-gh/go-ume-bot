@@ -130,7 +130,8 @@ func HandleCommands(bot *tg.Bot, config util.Config) {
 /activate - 赋予上下文
 /angry - 😠
 /n - 自然数真好玩
-/ping - pong`
+/ping - pong
+/burn - 去除盲水印（包括 AI 水印），并破坏图片`
 		ctx.Reply(helpMessage)
 		return nil
 	})
