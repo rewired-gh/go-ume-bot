@@ -10,9 +10,10 @@ type Config struct {
 
 // Reads configuration from environment file then environment variables
 func LoadConfig(path string) (config Config, err error) {
+	viper.BindEnv("TOKEN", "TMP_PATH")
 	viper.AutomaticEnv()
 
-	if err = viper.Unmarshal(&config); err != nil {
+	if err = viper.Unmarshal(&config); err != nil || config.Token == "" {
 		viper.SetConfigName("app")
 		viper.SetConfigType("env")
 		viper.AddConfigPath(path)
