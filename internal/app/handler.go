@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -172,26 +173,36 @@ func handleBurnCommand(ctx tg.Context, bot *tg.Bot, config util.Config) error {
 
 // handleUpscaleCommand handles upscale command for any message type
 func handleUpscaleCommand(ctx tg.Context, bot *tg.Bot, config util.Config, args string) error {
+	log.Printf("[DEBUG] Upscale command started, args: %s", args)
+
 	msg := ctx.Message()
 	presetName := util.PresetNameAnimeFast4x
 	if args != "" {
 		presetName = args
 	}
+	log.Printf("[DEBUG] Using preset: %s", presetName)
 
 	fileID := util.GetPhotoFileID(msg)
 	if fileID == "" {
+		log.Printf("[DEBUG] No photo file ID found")
 		ctx.Reply(util.StickerFromID("CAACAgQAAxkBAAEg1LRkWe1Tk6Vc_mCZ8jqeKN5begPGKgACqwwAAu5XIVKAayOOt2MuRS8E"))
 		return nil
 	}
+	log.Printf("[DEBUG] Photo file ID: %s", fileID)
 
 	filePath, err := util.DownloadFile(config.TmpPath, fileID, bot)
 	if err != nil {
+		log.Printf("[DEBUG] Failed to download file: %v", err)
 		return err
 	}
-	defer os.Remove(filePath)
+	// defer os.Remove(filePath)
+	log.Printf("[DEBUG] Downloaded file to: %s", filePath)
+
+	log.Printf("Upscaling image using preset: %s", presetName) // Debug log
 
 	resultPath, err := util.UpscaleImage(filePath, presetName, config)
 	if err != nil {
+		log.Printf("[DEBUG] UpscaleImage failed: %v", err)
 		if err == util.ErrInvalidPreset {
 			ctx.Reply(util.GetPresetsList())
 			return nil
@@ -199,9 +210,11 @@ func handleUpscaleCommand(ctx tg.Context, bot *tg.Bot, config util.Config, args 
 		return err
 	}
 	defer os.Remove(resultPath)
+	log.Printf("[DEBUG] Upscaled image saved to: %s", resultPath)
 
 	photo := &tg.Photo{File: tg.FromDisk(resultPath)}
 	ctx.Reply(photo)
+	log.Printf("[DEBUG] Upscale command completed successfully")
 
 	return nil
 }
