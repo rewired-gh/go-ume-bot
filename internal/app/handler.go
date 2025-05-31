@@ -1,9 +1,8 @@
 package app
 
 import (
-	"bytes"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"time"
 
@@ -115,17 +114,25 @@ func HandleCommands(bot *tg.Bot, config util.Config) {
 		return nil
 	})
 
-	// Handle both photo and text messages with a unified handler
 	bot.Handle(tg.OnPhoto, func(ctx tg.Context) error {
 		return handleMessageCommands(ctx, bot, config)
 	})
 
-	bot.Handle(tg.OnText, func(ctx tg.Context) error {
+	bot.Handle(tg.OnDocument, func(ctx tg.Context) error {
 		return handleMessageCommands(ctx, bot, config)
 	})
 }
 
-// handleMessageCommands processes commands in both photo captions and text messages
+func downloadImageFromMessage(ctx tg.Context, bot *tg.Bot, config util.Config) (string, error) {
+	msg := ctx.Message()
+	imageInfo := util.GetImageFileInfo(msg)
+	if imageInfo == nil {
+		ctx.Reply(util.StickerFromID("CAACAgQAAxkBAAEg1LRkWe1Tk6Vc_mCZ8jqeKN5begPGKgACqwwAAu5XIVKAayOOt2MuRS8E"))
+		return "", nil
+	}
+	return util.DownloadImageFile(config.TmpPath, imageInfo.FileID, imageInfo.FileName, bot)
+}
+
 func handleMessageCommands(ctx tg.Context, bot *tg.Bot, config util.Config) error {
 	msg := ctx.Message()
 	text := util.GetTextOrCaption(msg)
@@ -142,17 +149,13 @@ func handleMessageCommands(ctx tg.Context, bot *tg.Bot, config util.Config) erro
 	return nil
 }
 
-// handleBurnCommand handles burn command for any message type
 func handleBurnCommand(ctx tg.Context, bot *tg.Bot, config util.Config) error {
-	msg := ctx.Message()
-	fileID := util.GetPhotoFileID(msg)
-	if fileID == "" {
-		ctx.Reply(util.StickerFromID("CAACAgQAAxkBAAEg1LRkWe1Tk6Vc_mCZ8jqeKN5begPGKgACqwwAAu5XIVKAayOOt2MuRS8E"))
-		return nil
-	}
-	filePath, err := util.DownloadFile(config.TmpPath, fileID, bot)
+	filePath, err := downloadImageFromMessage(ctx, bot, config)
 	if err != nil {
 		return err
+	}
+	if filePath == "" {
+		return nil
 	}
 	img, err := util.LoadImage(filePath)
 	if err != nil {
@@ -166,43 +169,42 @@ func handleBurnCommand(ctx tg.Context, bot *tg.Bot, config util.Config) error {
 	if err != nil {
 		return err
 	}
-	photo := &tg.Photo{File: tg.FromReader(bytes.NewReader(imgBytes))}
-	ctx.Reply(photo)
+	tempFile := fmt.Sprintf("%s/burned_%d.png", config.TmpPath, time.Now().Unix())
+	if err := os.WriteFile(tempFile, imgBytes, 0644); err != nil {
+		return err
+	}
+	defer os.Remove(tempFile)
+	document := &tg.Document{File: tg.FromDisk(tempFile), FileName: "watermark_removed.png"}
+	ctx.Reply(document)
 	return nil
 }
 
-// handleUpscaleCommand handles upscale command for any message type
 func handleUpscaleCommand(ctx tg.Context, bot *tg.Bot, config util.Config, args string) error {
-	log.Printf("[DEBUG] Upscale command started, args: %s", args)
+	slog.Debug("Upscale command started", "args", args)
 
-	msg := ctx.Message()
 	presetName := util.PresetNameAnimeFast4x
 	if args != "" {
 		presetName = args
 	}
-	log.Printf("[DEBUG] Using preset: %s", presetName)
+	slog.Debug("Using preset", "preset", presetName)
 
-	fileID := util.GetPhotoFileID(msg)
-	if fileID == "" {
-		log.Printf("[DEBUG] No photo file ID found")
-		ctx.Reply(util.StickerFromID("CAACAgQAAxkBAAEg1LRkWe1Tk6Vc_mCZ8jqeKN5begPGKgACqwwAAu5XIVKAayOOt2MuRS8E"))
-		return nil
-	}
-	log.Printf("[DEBUG] Photo file ID: %s", fileID)
-
-	filePath, err := util.DownloadFile(config.TmpPath, fileID, bot)
+	filePath, err := downloadImageFromMessage(ctx, bot, config)
 	if err != nil {
-		log.Printf("[DEBUG] Failed to download file: %v", err)
+		slog.Debug("Failed to download file", "error", err)
 		return err
 	}
-	// defer os.Remove(filePath)
-	log.Printf("[DEBUG] Downloaded file to: %s", filePath)
+	if filePath == "" {
+		slog.Debug("No image file found")
+		return nil
+	}
+	defer os.Remove(filePath)
+	slog.Debug("Downloaded file", "path", filePath)
 
-	log.Printf("Upscaling image using preset: %s", presetName) // Debug log
+	slog.Debug("Upscaling image using preset", "preset", presetName)
 
 	resultPath, err := util.UpscaleImage(filePath, presetName, config)
 	if err != nil {
-		log.Printf("[DEBUG] UpscaleImage failed: %v", err)
+		slog.Debug("UpscaleImage failed", "error", err)
 		if err == util.ErrInvalidPreset {
 			ctx.Reply(util.GetPresetsList())
 			return nil
@@ -210,11 +212,11 @@ func handleUpscaleCommand(ctx tg.Context, bot *tg.Bot, config util.Config, args 
 		return err
 	}
 	defer os.Remove(resultPath)
-	log.Printf("[DEBUG] Upscaled image saved to: %s", resultPath)
+	slog.Debug("Upscaled image saved", "path", resultPath)
 
-	photo := &tg.Photo{File: tg.FromDisk(resultPath)}
-	ctx.Reply(photo)
-	log.Printf("[DEBUG] Upscale command completed successfully")
+	document := &tg.Document{File: tg.FromDisk(resultPath), FileName: fmt.Sprintf("upscaled_%s.png", presetName)}
+	ctx.Reply(document)
+	slog.Debug("Upscale command completed successfully")
 
 	return nil
 }

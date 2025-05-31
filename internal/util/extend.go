@@ -58,42 +58,26 @@ func GetBoundNum(str string) (num int64, err error) {
 	return
 }
 
-// ParseCommand extracts command and arguments from text or caption
-// Returns command (without /) and arguments
 func ParseCommand(text string) (command string, args string) {
-	// Remove leading/trailing whitespace
 	text = strings.TrimSpace(text)
-
-	// Check if it starts with a command
 	if !strings.HasPrefix(text, "/") {
 		return "", ""
 	}
-
-	// Remove the leading slash
 	text = text[1:]
-
-	// Split by whitespace to separate command and arguments
 	parts := strings.Fields(text)
 	if len(parts) == 0 {
 		return "", ""
 	}
-
 	command = parts[0]
-
-	// Remove @botname if present
 	if atIndex := strings.Index(command, "@"); atIndex != -1 {
 		command = command[:atIndex]
 	}
-
-	// Join the remaining parts as arguments
 	if len(parts) > 1 {
 		args = strings.Join(parts[1:], " ")
 	}
-
 	return command, args
 }
 
-// GetTextOrCaption returns the text content from either message text or photo caption
 func GetTextOrCaption(msg *tg.Message) string {
 	if msg.Text != "" {
 		return msg.Text

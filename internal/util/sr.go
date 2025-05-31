@@ -3,7 +3,7 @@ package util
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -68,14 +68,14 @@ g - General 4x (slowest, for general use)`
 }
 
 func UpscaleImage(imgPath string, presetName string, config Config) (resultPath string, err error) {
-	log.Printf("[DEBUG] UpscaleImage called with imgPath: %s, presetName: %s", imgPath, presetName)
+	slog.Debug("UpscaleImage called", "imgPath", imgPath, "presetName", presetName)
 
 	preset, ok := SRPresets[presetName]
 	if !ok {
-		log.Printf("[DEBUG] Invalid preset: %s", presetName)
+		slog.Debug("Invalid preset", "preset", presetName)
 		return "", ErrInvalidPreset
 	}
-	log.Printf("[DEBUG] Using preset - Scale: %s, Model: %s", preset.Scale, preset.ModelName)
+	slog.Debug("Using preset", "scale", preset.Scale, "model", preset.ModelName)
 
 	imgFileName := filepath.Base(imgPath)
 	ext := strings.LastIndex(imgFileName, ".")
@@ -88,32 +88,27 @@ func UpscaleImage(imgPath string, presetName string, config Config) (resultPath 
 
 	resultPath, err = filepath.Abs(relativeResultPath)
 	if err != nil {
-		log.Printf("[DEBUG] Failed to get absolute path: %v", err)
+		slog.Debug("Failed to get absolute path", "error", err)
 		return
 	}
-	log.Printf("[DEBUG] Result path: %s", resultPath)
+	slog.Debug("Result path", "path", resultPath)
 
 	cmd := exec.Command("./realesrgan-ncnn-vulkan", "-i", imgPath, "-o", resultPath, "-n", string(preset.ModelName), "-s", string(preset.Scale))
 	cmd.Dir = config.RESRGANPath
-	log.Printf("[DEBUG] Running command: %s in directory: %s", cmd.String(), cmd.Dir)
-	log.Printf("[DEBUG] Command args: %v", cmd.Args)
-
-	// Capture both stdout and stderr for better debugging
+	slog.Debug("Running command", "command", cmd.String(), "directory", cmd.Dir)
+	slog.Debug("Command args", "args", cmd.Args)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("[DEBUG] Command failed: %v", err)
-		log.Printf("[DEBUG] Command output: %s", string(output))
+		slog.Debug("Command failed", "error", err)
+		slog.Debug("Command output", "output", string(output))
 		return
 	}
-	log.Printf("[DEBUG] Command completed successfully")
-	log.Printf("[DEBUG] Command output: %s", string(output))
-
-	// Check if the result file was actually created
+	slog.Debug("Command completed successfully")
+	slog.Debug("Command output", "output", string(output))
 	if _, err := os.Stat(resultPath); os.IsNotExist(err) {
-		log.Printf("[DEBUG] Result file not created: %s", resultPath)
+		slog.Debug("Result file not created", "path", resultPath)
 		return "", fmt.Errorf("upscaling failed: result file not created")
 	}
-	log.Printf("[DEBUG] Result file confirmed: %s", resultPath)
-
+	slog.Debug("Result file confirmed", "path", resultPath)
 	return
 }

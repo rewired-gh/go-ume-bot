@@ -6,10 +6,13 @@ import (
 	tg "gopkg.in/telebot.v3"
 )
 
-// DownloadFile will download from a given url to a file.
-func DownloadFile(directory string, id string, bot *tg.Bot) (filePath string, err error) {
-	// Add .jpg extension for downloaded photos to ensure proper format detection
-	relativePath := filepath.Join(directory, id+".jpg")
+func DownloadImageFile(directory string, id string, filename string, bot *tg.Bot) (filePath string, err error) {
+	ext := filepath.Ext(filename)
+	if ext == "" {
+		ext = ".jpg"
+	}
+
+	relativePath := filepath.Join(directory, id+ext)
 	filePath, err = filepath.Abs(relativePath)
 	if err != nil {
 		return
