@@ -1,0 +1,12 @@
+start - 开始和 Ume 聊天啦
+help - 显示帮助信息
+ping - 测试机器人响应 (回复 pong)
+akari - アッカリ〜ン
+hug - 贴贴
+kawaii - 可爱喵
+lu - lu 😭😭
+activate - 赋予上下文
+angry - 😠 (可指定次数)
+n - 自然数真好玩 (0-10)
+burn - 去除盲水印（包括 AI 水印），并破坏图片
+upscale - 放大图片 (可选预设名称)

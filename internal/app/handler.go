@@ -98,18 +98,37 @@ func HandleCommands(bot *tg.Bot, config util.Config) {
 	})
 
 	bot.Handle("/help", func(ctx tg.Context) error {
-		helpMessage := `/start - 开始和 Ume 聊天啦
-/help - 显示帮助信息
+		helpMessage := `基础命令：
+/start - 开始和 Ume 聊天啦
+/help - 显示此帮助信息
+/ping - 测试机器人响应 (回复 pong)
+
+娱乐命令：
 /akari - アッカリ〜ン
 /hug - 贴贴
 /kawaii - 可爱喵
 /lu - lu 😭😭
 /activate - 赋予上下文
-/angry - 😠
-/n - 自然数真好玩
-/ping - pong
+/angry - 😠 (可指定次数)
+
+实用命令：
+/n <数字> - 自然数真好玩 (0-10)
+
+图片处理命令：
 /burn - 去除盲水印（包括 AI 水印），并破坏图片
-/upscale - 放大图片 (可选预设名称)`
+/upscale [预设] - 放大图片
+
+图片处理用法：
+• 发送图片作为照片或文档，并在标题中添加命令
+• 或者回复包含图片的消息并使用命令
+
+可用的放大预设：
+• af4 - Anime Fast 4x
+• af2 - Anime Fast 2x
+• a - Anime Normal 4x
+• g - General 4x
+
+不指定预设时默认使用 af4`
 		ctx.Reply(helpMessage)
 		return nil
 	})
@@ -137,7 +156,11 @@ func handleMessageCommands(ctx tg.Context, bot *tg.Bot, config util.Config) erro
 	msg := ctx.Message()
 	text := util.GetTextOrCaption(msg)
 
+	slog.Debug("Message received", "text", text, "hasPhoto", msg.Photo != nil, "hasDocument", msg.Document != nil)
+
 	command, args := util.ParseCommand(text)
+
+	slog.Debug("Parsed command", "command", command, "args", args)
 
 	switch command {
 	case "burn":
@@ -150,15 +173,24 @@ func handleMessageCommands(ctx tg.Context, bot *tg.Bot, config util.Config) erro
 }
 
 func handleBurnCommand(ctx tg.Context, bot *tg.Bot, config util.Config) error {
-	filePath, err := downloadImageFromMessage(ctx, bot, config)
+	processingMsg, err := ctx.Bot().Reply(ctx.Message(), "正在去除水印，请稍候……")
 	if err != nil {
 		return err
 	}
+
+	filePath, err := downloadImageFromMessage(ctx, bot, config)
+	if err != nil {
+		bot.Edit(processingMsg, "下载图片失败")
+		return err
+	}
 	if filePath == "" {
+		bot.Edit(processingMsg, "没有找到可处理的图片")
 		return nil
 	}
+
 	img, err := util.LoadImage(filePath)
 	if err != nil {
+		bot.Edit(processingMsg, "加载图片失败")
 		return err
 	}
 	if err = os.Remove(filePath); err != nil {
@@ -167,13 +199,17 @@ func handleBurnCommand(ctx tg.Context, bot *tg.Bot, config util.Config) error {
 	burnedImage := burner.BurnImage(img)
 	imgBytes, err := util.ImageToPNGBytes(burnedImage)
 	if err != nil {
+		bot.Edit(processingMsg, "处理图片失败")
 		return err
 	}
 	tempFile := fmt.Sprintf("%s/burned_%d.png", config.TmpPath, time.Now().Unix())
 	if err := os.WriteFile(tempFile, imgBytes, 0644); err != nil {
+		bot.Edit(processingMsg, "保存图片失败")
 		return err
 	}
 	defer os.Remove(tempFile)
+
+	bot.Delete(processingMsg)
 	document := &tg.Document{File: tg.FromDisk(tempFile), FileName: "watermark_removed.png"}
 	ctx.Reply(document)
 	return nil
@@ -181,6 +217,11 @@ func handleBurnCommand(ctx tg.Context, bot *tg.Bot, config util.Config) error {
 
 func handleUpscaleCommand(ctx tg.Context, bot *tg.Bot, config util.Config, args string) error {
 	slog.Debug("Upscale command started", "args", args)
+
+	processingMsg, err := ctx.Bot().Reply(ctx.Message(), "正在放大图片，请稍候……")
+	if err != nil {
+		return err
+	}
 
 	presetName := util.PresetNameAnimeFast4x
 	if args != "" {
@@ -191,10 +232,12 @@ func handleUpscaleCommand(ctx tg.Context, bot *tg.Bot, config util.Config, args 
 	filePath, err := downloadImageFromMessage(ctx, bot, config)
 	if err != nil {
 		slog.Debug("Failed to download file", "error", err)
+		bot.Edit(processingMsg, "下载图片失败")
 		return err
 	}
 	if filePath == "" {
 		slog.Debug("No image file found")
+		bot.Edit(processingMsg, "没有找到可处理的图片")
 		return nil
 	}
 	defer os.Remove(filePath)
@@ -206,14 +249,16 @@ func handleUpscaleCommand(ctx tg.Context, bot *tg.Bot, config util.Config, args 
 	if err != nil {
 		slog.Debug("UpscaleImage failed", "error", err)
 		if err == util.ErrInvalidPreset {
-			ctx.Reply(util.GetPresetsList())
+			bot.Edit(processingMsg, fmt.Sprintf("无效的预设名称\n\n%s", util.GetPresetsList()))
 			return nil
 		}
+		bot.Edit(processingMsg, "图片放大失败")
 		return err
 	}
 	defer os.Remove(resultPath)
 	slog.Debug("Upscaled image saved", "path", resultPath)
 
+	bot.Delete(processingMsg)
 	document := &tg.Document{File: tg.FromDisk(resultPath), FileName: fmt.Sprintf("upscaled_%s.png", presetName)}
 	ctx.Reply(document)
 	slog.Debug("Upscale command completed successfully")
