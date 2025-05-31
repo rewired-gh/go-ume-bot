@@ -80,7 +80,7 @@ func HandleCommands(bot *tg.Bot, config util.Config) {
 	})
 
 	bot.Handle("/n", func(ctx tg.Context) error {
-		num, err := util.GetBoundNum(util.GetEntity(ctx))
+		num, err := util.GetBoundNum(ctx.Message().Payload)
 		if err != nil {
 			ctx.Reply(util.StickerFromID("CAACAgQAAxkBAAEg1LRkWe1Tk6Vc_mCZ8jqeKN5begPGKgACqwwAAu5XIVKAayOOt2MuRS8E"))
 			return err
@@ -89,35 +89,12 @@ func HandleCommands(bot *tg.Bot, config util.Config) {
 		return nil
 	})
 
-	bot.Handle(tg.OnPhoto, func(ctx tg.Context) error {
-		msg := ctx.Message()
-		caption := msg.Caption
-		if caption != "/burn" {
-			return nil
-		}
-		fileID := msg.Photo.FileID
-		filePath, err := util.DownloadFile(config.TmpPath, fileID, bot)
-		if err != nil {
-			return err
-		}
-		img, err := util.LoadImage(filePath)
-		if err != nil {
-			fmt.Println("3")
-			return err
-		}
-		if err = os.Remove(filePath); err != nil {
-			fmt.Println("4")
-			return err
-		}
-		burnedImage := burner.BurnImage(img)
-		imgBytes, err := util.ImageToPNGBytes(burnedImage)
-		if err != nil {
-			fmt.Println("5")
-			return err
-		}
-		photo := &tg.Photo{File: tg.FromReader(bytes.NewReader(imgBytes))}
-		ctx.Reply(photo)
-		return nil
+	bot.Handle("/burn", func(ctx tg.Context) error {
+		return handleBurnCommand(ctx, bot, config)
+	})
+
+	bot.Handle("/upscale", func(ctx tg.Context) error {
+		return handleUpscaleCommand(ctx, bot, config, ctx.Message().Payload)
 	})
 
 	bot.Handle("/help", func(ctx tg.Context) error {
@@ -131,8 +108,100 @@ func HandleCommands(bot *tg.Bot, config util.Config) {
 /angry - 😠
 /n - 自然数真好玩
 /ping - pong
-/burn - 去除盲水印（包括 AI 水印），并破坏图片`
+/burn - 去除盲水印（包括 AI 水印），并破坏图片
+/upscale - 放大图片 (可选预设名称)`
 		ctx.Reply(helpMessage)
 		return nil
 	})
+
+	// Handle both photo and text messages with a unified handler
+	bot.Handle(tg.OnPhoto, func(ctx tg.Context) error {
+		return handleMessageCommands(ctx, bot, config)
+	})
+
+	bot.Handle(tg.OnText, func(ctx tg.Context) error {
+		return handleMessageCommands(ctx, bot, config)
+	})
+}
+
+// handleMessageCommands processes commands in both photo captions and text messages
+func handleMessageCommands(ctx tg.Context, bot *tg.Bot, config util.Config) error {
+	msg := ctx.Message()
+	text := util.GetTextOrCaption(msg)
+
+	command, args := util.ParseCommand(text)
+
+	switch command {
+	case "burn":
+		return handleBurnCommand(ctx, bot, config)
+	case "upscale":
+		return handleUpscaleCommand(ctx, bot, config, args)
+	}
+
+	return nil
+}
+
+// handleBurnCommand handles burn command for any message type
+func handleBurnCommand(ctx tg.Context, bot *tg.Bot, config util.Config) error {
+	msg := ctx.Message()
+	fileID := util.GetPhotoFileID(msg)
+	if fileID == "" {
+		ctx.Reply(util.StickerFromID("CAACAgQAAxkBAAEg1LRkWe1Tk6Vc_mCZ8jqeKN5begPGKgACqwwAAu5XIVKAayOOt2MuRS8E"))
+		return nil
+	}
+	filePath, err := util.DownloadFile(config.TmpPath, fileID, bot)
+	if err != nil {
+		return err
+	}
+	img, err := util.LoadImage(filePath)
+	if err != nil {
+		return err
+	}
+	if err = os.Remove(filePath); err != nil {
+		return err
+	}
+	burnedImage := burner.BurnImage(img)
+	imgBytes, err := util.ImageToPNGBytes(burnedImage)
+	if err != nil {
+		return err
+	}
+	photo := &tg.Photo{File: tg.FromReader(bytes.NewReader(imgBytes))}
+	ctx.Reply(photo)
+	return nil
+}
+
+// handleUpscaleCommand handles upscale command for any message type
+func handleUpscaleCommand(ctx tg.Context, bot *tg.Bot, config util.Config, args string) error {
+	msg := ctx.Message()
+	presetName := util.PresetNameAnimeFast4x
+	if args != "" {
+		presetName = args
+	}
+
+	fileID := util.GetPhotoFileID(msg)
+	if fileID == "" {
+		ctx.Reply(util.StickerFromID("CAACAgQAAxkBAAEg1LRkWe1Tk6Vc_mCZ8jqeKN5begPGKgACqwwAAu5XIVKAayOOt2MuRS8E"))
+		return nil
+	}
+
+	filePath, err := util.DownloadFile(config.TmpPath, fileID, bot)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(filePath)
+
+	resultPath, err := util.UpscaleImage(filePath, presetName, config)
+	if err != nil {
+		if err == util.ErrInvalidPreset {
+			ctx.Reply(util.GetPresetsList())
+			return nil
+		}
+		return err
+	}
+	defer os.Remove(resultPath)
+
+	photo := &tg.Photo{File: tg.FromDisk(resultPath)}
+	ctx.Reply(photo)
+
+	return nil
 }

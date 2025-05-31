@@ -1,29 +1,40 @@
 package util
 
-import "github.com/spf13/viper"
+import (
+	"fmt"
+
+	"github.com/spf13/viper"
+)
 
 // All configuration of the application
 type Config struct {
-	TmpPath string `mapstructure:"TMP_PATH"`
-	Token   string `mapstructure:"TOKEN"`
+	TmpPath     string `mapstructure:"TMP_PATH"`
+	Token       string `mapstructure:"TOKEN"`
+	RESRGANPath string `mapstructure:"RESRGAN_PATH"`
 }
 
 // Reads configuration from environment file then environment variables
 func LoadConfig(path string) (config Config, err error) {
-	viper.BindEnv("TOKEN", "TMP_PATH")
+	viper.BindEnv("TOKEN")
+	viper.BindEnv("TMP_PATH")
+	viper.BindEnv("RESRGAN_PATH")
 	viper.AutomaticEnv()
 
-	if err = viper.Unmarshal(&config); err != nil || config.Token == "" {
-		viper.SetConfigName("app")
-		viper.SetConfigType("env")
-		viper.AddConfigPath(path)
+	viper.SetConfigName("app")
+	viper.SetConfigType("env")
+	viper.AddConfigPath(path)
 
-		err = viper.ReadInConfig()
-		if err != nil {
-			return
-		}
-	}
+	viper.ReadInConfig()
 
 	err = viper.Unmarshal(&config)
+	if err != nil {
+		return
+	}
+
+	if config.Token == "" {
+		err = fmt.Errorf("TOKEN is required but not set in environment variables or config file")
+		return
+	}
+
 	return
 }

@@ -7,6 +7,8 @@ import (
 	"image/png"
 	_ "image/png"
 	"os"
+
+	tg "gopkg.in/telebot.v3"
 )
 
 func LoadImage(filePath string) (image.Image, error) {
@@ -30,4 +32,15 @@ func ImageToPNGBytes(img image.Image) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// GetPhotoFileID extracts the file ID from either the current message photo or replied message photo
+func GetPhotoFileID(msg *tg.Message) string {
+	if msg.Photo != nil {
+		return msg.Photo.FileID
+	}
+	if msg.ReplyTo != nil && msg.ReplyTo.Photo != nil {
+		return msg.ReplyTo.Photo.FileID
+	}
+	return ""
 }
