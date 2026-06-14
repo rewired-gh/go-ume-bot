@@ -1,0 +1,23 @@
+[Unit]
+Description=Ume Telegram bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ume
+Group=ume
+WorkingDirectory=/var/lib/ume
+EnvironmentFile=/etc/ume/ume.env
+Environment=TMP_PATH=/var/lib/ume/tmp
+ExecStart=/usr/local/bin/ume
+Restart=always
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/ume
+
+[Install]
+WantedBy=multi-user.target

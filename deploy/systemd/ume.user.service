@@ -1,0 +1,19 @@
+[Unit]
+Description=Ume Telegram bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/state/ume
+EnvironmentFile=%h/.config/ume/ume.env
+Environment=TMP_PATH=%h/.local/state/ume/tmp
+ExecStart=%h/.local/bin/ume
+Restart=always
+RestartSec=5s
+LimitNOFILE=1024
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

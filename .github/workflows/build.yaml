@@ -1,21 +1,116 @@
-name: Build Go artifacts
+name: CI/CD
 
-on: [push]
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy the Linux amd64 artifact to mango with systemd
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.24.3"
+  ARTIFACT_NAME: ume-linux-amd64
 
 jobs:
-  build:
-
+  test:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.21.1'
-        uses: actions/setup-go@v4
-      - name: Build with go
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Test
+        run: make test
+
+  build-linux-amd64:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build Linux amd64 artifact
         run: make build_x64
-      - name: Upload Go artifacts
-        uses: actions/upload-artifact@v3
+
+      - name: Upload Linux amd64 artifact
+        uses: actions/upload-artifact@v4
         with:
+          name: ${{ env.ARTIFACT_NAME }}
           path: ./target/umed_linux_amd64
+          if-no-files-found: error
+          retention-days: 14
+
+  deploy-mango:
+    runs-on: ubuntu-latest
+    needs: build-linux-amd64
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy }}
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Linux amd64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ./target
+
+      - name: Configure SSH
+        env:
+          MANGO_SSH_KEY: ${{ secrets.MANGO_SSH_KEY }}
+          MANGO_KNOWN_HOSTS: ${{ secrets.MANGO_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$MANGO_SSH_KEY" > ~/.ssh/mango
+          chmod 600 ~/.ssh/mango
+          printf '%s\n' "$MANGO_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Upload service files
+        env:
+          MANGO_HOST: ${{ secrets.MANGO_HOST }}
+          MANGO_USER: ${{ secrets.MANGO_USER }}
+          UME_ENV_FILE: ${{ secrets.UME_ENV_FILE }}
+        run: |
+          chmod +x ./target/umed_linux_amd64
+          if [ -n "$UME_ENV_FILE" ]; then
+            printf '%s\n' "$UME_ENV_FILE" > ./target/ume.env
+          fi
+          scp -i ~/.ssh/mango ./target/umed_linux_amd64 "$MANGO_USER@$MANGO_HOST:/tmp/ume-${GITHUB_SHA}"
+          scp -i ~/.ssh/mango ./deploy/systemd/ume.service "$MANGO_USER@$MANGO_HOST:/tmp/ume.service"
+          if [ -s ./target/ume.env ]; then
+            scp -i ~/.ssh/mango ./target/ume.env "$MANGO_USER@$MANGO_HOST:/tmp/ume.env"
+          fi
+
+      - name: Install and restart ume
+        env:
+          MANGO_HOST: ${{ secrets.MANGO_HOST }}
+          MANGO_USER: ${{ secrets.MANGO_USER }}
+        run: |
+          ssh -i ~/.ssh/mango "$MANGO_USER@$MANGO_HOST" "id -u ume >/dev/null 2>&1 || sudo useradd --system --home-dir /var/lib/ume --shell /usr/sbin/nologin ume && sudo install -d -o ume -g ume -m 0750 /var/lib/ume /var/lib/ume/tmp && sudo install -d -o root -g root -m 0750 /etc/ume && if test -f /tmp/ume.env; then sudo install -o root -g ume -m 0640 /tmp/ume.env /etc/ume/ume.env; fi && sudo install -o root -g root -m 0755 /tmp/ume-${GITHUB_SHA} /usr/local/bin/ume && sudo install -o root -g root -m 0644 /tmp/ume.service /etc/systemd/system/ume.service && sudo systemctl daemon-reload && sudo systemctl enable --now ume.service && sudo systemctl restart ume.service && sudo systemctl --no-pager --full status ume.service"
